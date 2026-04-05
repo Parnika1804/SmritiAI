@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Smriti AI — API Test Panel</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="api.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #050810;
+      color: #e0e8f0;
+      font-family: monospace;
+      padding: 24px;
+    }
+
+    h1 {
+      color: #00f5ff;
+      font-size: 1.3rem;
+      letter-spacing: 3px;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: #7a8fa6;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+    }
+
+    .test-card {
+      background: #0d1424;
+      border: 1px solid #1a2740;
+      border-left: 3px solid #00f5ff;
+      border-radius: 4px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .test-card.vehicle { border-left-color: #ffd600; }
+    .test-card.scene   { border-left-color: #00ff88; }
+    .test-card.fir     { border-left-color: #ffd600; }
+    .test-card.sketch  { border-left-color: #ff3b5c; }
+    .test-card.pdf     { border-left-color: #00ff88; }
+
+    .test-card h3 {
+      font-size: 0.8rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      color: #00f5ff;
+    }
+
+    .test-card.vehicle h3 { color: #ffd600; }
+    .test-card.fir h3     { color: #ffd600; }
+    .test-card.sketch h3  { color: #ff3b5c; }
+    .test-card.pdf h3     { color: #00ff88; }
+
+    .test-card p {
+      font-size: 0.75rem;
+      color: #7a8fa6;
+      margin-bottom: 14px;
+      line-height: 1.6;
+    }
+
+    button {
+      padding: 10px 24px;
+      background: transparent;
+      border: 1px solid #00f5ff;
+      border-radius: 3px;
+      color: #00f5ff;
+      font-family: monospace;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    button:hover { background: rgba(0,245,255,0.08); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    button.yellow { border-color: #ffd600; color: #ffd600; }
+    button.yellow:hover { background: rgba(255,214,0,0.08); }
+
+    button.green { border-color: #00ff88; color: #00ff88; }
+    button.green:hover { background: rgba(0,255,136,0.08); }
+
+    button.red { border-color: #ff3b5c; color: #ff3b5c; }
+    button.red:hover { background: rgba(255,59,92,0.08); }
+
+    .result-box {
+      margin-top: 14px;
+      background: #050810;
+      border: 1px solid #1a2740;
+      border-radius: 3px;
+      padding: 14px;
+      font-size: 0.72rem;
+      line-height: 1.7;
+      color: #e0e8f0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .result-box.visible { display: block; }
+
+    .status {
+      display: inline-block;
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    .status.running  { background: rgba(255,214,0,0.15); color: #ffd600; border: 1px solid #ffd600; }
+    .status.success  { background: rgba(0,255,136,0.15); color: #00ff88; border: 1px solid #00ff88; }
+    .status.fail     { background: rgba(255,59,92,0.15);  color: #ff3b5c; border: 1px solid #ff3b5c; }
+
+    .sketch-img {
+      margin-top: 14px;
+      max-width: 260px;
+      border-radius: 4px;
+      border: 1px solid #1a2740;
+      display: none;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #1a2740;
+      margin: 32px 0;
+    }
+
+    .all-btn {
+      display: block;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto 40px;
+      padding: 16px;
+      background: rgba(0,245,255,0.08);
+      border: 2px solid #00f5ff;
+      border-radius: 4px;
+      color: #00f5ff;
+      font-family: monospace;
+      font-size: 0.9rem;
+      letter-spacing: 3px;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 0 20px rgba(0,245,255,0.2);
+      text-align: center;
+    }
+
+    .all-btn:hover { background: rgba(0,245,255,0.15); box-shadow: 0 0 40px rgba(0,245,255,0.3); }
+
+    #globalStatus {
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      color: #7a8fa6;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>SMRITI AI — API TEST PANEL</h1>
+  <div class="subtitle">// Person 2 — Test all functions before handing to Person 1</div>
+
+  <!-- RUN ALL -->
+  <button class="all-btn" onclick="runAllTests()">▶ RUN ALL TESTS IN ORDER</button>
+  <div id="globalStatus">Ready to test.</div>
+
+  <hr class="divider"/>
+
+  <!-- TEST 1 — callGemini -->
+  <div class="test-card">
+    <h3>Test 1 — callGemini() <span class="status" id="s1"></span></h3>
+    <p>Sends a simple "say hello" prompt to Gemini. If this works, your Gemini API key is correct.</p>
+    <button onclick="testGemini()">▶ RUN TEST</button>
+    <div class="result-box" id="r1"></div>
+  </div>
+
+  <!-- TEST 2 — analyzeStatement -->
+  <div class="test-card">
+    <h3>Test 2 — analyzeStatement() <span class="status" id="s2"></span></h3>
+    <p>Sends a dummy witness statement to Gemini. Should return a clean JSON object with suspect, vehicle, and scene fields.</p>
+    <button onclick="testAnalyze()">▶ RUN TEST</button>
+    <div class="result-box" id="r2"></div>
+  </div>
+
+  <!-- TEST 3 — generateFIR -->
+  <div class="test-card fir">
+    <h3>Test 3 — generateFIR() <span class="status" id="s3"></span></h3>
+    <p>Uses the crimeData from Test 2 to generate a formal Indian FIR. Run Test 2 first.</p>
+    <button class="yellow" onclick="testFIR()">▶ RUN TEST</button>
+    <div class="result-box" id="r3"></div>
+  </div>
+
+  <!-- TEST 4 — generateSketch -->
+  <div class="test-card sketch">
+    <h3>Test 4 — generateSketch() <span class="status" id="s4"></span></h3>
+    <p>Sends suspect details to HuggingFace Stable Diffusion. May take 30–60 seconds if model is loading. If it fails, FLUX fallback will be tried automatically.</p>
+    <button class="red" onclick="testSketch()">▶ RUN TEST</button>
+    <img class="sketch-img" id="sketchResult" alt="Generated Sketch"/>
+    <div class="result-box" id="r4"></div>
+  </div>
+
+  <!-- TEST 5 — downloadPDF -->
+  <div class="test-card pdf">
+    <h3>Test 5 — downloadPDF() <span class="status" id="s5"></span></h3>
+    <p>Generates a full PDF with all dummy data. A file called SmritiAI_Report will be downloaded. Run Tests 2 and 3 first for best results.</p>
+    <button class="green" onclick="testPDF()">▶ RUN TEST</button>
+    <div class="result-box" id="r5"></div>
+  </div>
+
+  <script>
+    // ============================================================
+    // DUMMY TEST DATA
+    // ============================================================
+    const DUMMY_STATEMENT = `The suspect was a tall man around 35 years old, dark complexion, wearing a black jacket and blue jeans. He had a scar on his left cheek and short black hair. He escaped on a red motorcycle, number plate MH-12-AB-3456. The incident happened near Dadar station at around 9 PM. It was dark and raining.`;
+
+    const DUMMY_OFFICER = {
+      name: "Ramesh Kumar",
+      badge: "MH-1042",
+      station: "Dadar Police Station, Mumbai"
+    };
+
+    const DUMMY_CASE = {
+      caseId: "FIR-2024-MH-001",
+      victimName: "Suresh Patil",
+      crimeType: "Robbery",
+      incidentDate: "2024-11-15T21:00"
+    };
+
+    // Shared state across tests
+    let testCrimeData = null;
+    let testFirText = "";
+    let testSketchURL = "";
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+    function setStatus(id, type, text) {
+      const el = document.getElementById(id);
+      el.className = `status ${type}`;
+      el.textContent = text;
+    }
+
+    function showResult(id, content) {
+      const el = document.getElementById(id);
+      el.textContent = content;
+      el.classList.add('visible');
+    }
+
+    function updateGlobal(msg) {
+      document.getElementById('globalStatus').textContent = msg;
+    }
+
+    // ============================================================
+    // TEST 1 — callGemini
+    // ============================================================
+    async function testGemini() {
+      setStatus('s1', 'running', 'RUNNING...');
+      showResult('r1', 'Sending prompt to Gemini...');
+      try {
+        const result = await callGemini("Say hello and confirm you are working correctly in one sentence.");
+        setStatus('s1', 'success', '✓ PASSED');
+        showResult('r1', `RESPONSE:\n${result}`);
+        return true;
+      } catch(e) {
+        setStatus('s1', 'fail', '✗ FAILED');
+        showResult('r1', `ERROR:\n${e.message}\n\nFix: Check your GEMINI_API_KEY in api.js`);
+        return false;
+      }
+    }
+
+    // ============================================================
+    // TEST 2 — analyzeStatement
+    // ============================================================
+    async function testAnalyze() {
+      setStatus('s2', 'running', 'RUNNING...');
+      showResult('r2', `Sending this statement to Gemini:\n\n"${DUMMY_STATEMENT}"\n\nWaiting for response...`);
+      try {
+        testCrimeData = await analyzeStatement(DUMMY_STATEMENT);
+        setStatus('s2', 'success', '✓ PASSED');
+        showResult('r2', `EXTRACTED CRIME DATA:\n\n${JSON.stringify(testCrimeData, null, 2)}`);
+        return true;
+      } catch(e) {
+        setStatus('s2', 'fail', '✗ FAILED');
+        showResult('r2', `ERROR:\n${e.message}`);
+        return false;
+      }
+    }
+
+    // ============================================================
+    // TEST 3 — generateFIR
+    // ============================================================
+    async function testFIR() {
+      if (!testCrimeData) {
+        showResult('r3', 'Run Test 2 first to get crimeData.');
+        document.getElementById('r3').classList.add('visible');
+        return false;
+      }
+      setStatus('s3', 'running', 'RUNNING...');
+      showResult('r3', 'Sending crime data to Gemini to write FIR...');
+      try {
+        testFirText = await generateFIR(testCrimeData, DUMMY_OFFICER, DUMMY_STATEMENT);
+        setStatus('s3', 'success', '✓ PASSED');
+        showResult('r3', `GENERATED FIR:\n\n${testFirText}`);
+        return true;
+      } catch(e) {
+        setStatus('s3', 'fail', '✗ FAILED');
+        showResult('r3', `ERROR:\n${e.message}`);
+        return false;
+      }
+    }
+
+    // ============================================================
+    // TEST 4 — generateSketch
+    // ============================================================
+    async function testSketch() {
+      const suspectData = testCrimeData?.suspect || {
+        age: "35", gender: "male", height: "tall", build: "medium",
+        skin_tone: "dark", hair: "short black", eyes: "dark brown",
+        clothing: "black jacket and blue jeans", distinctive_marks: "scar on left cheek"
+      };
+      setStatus('s4', 'running', 'RUNNING...');
+      showResult('r4', 'Sending to HuggingFace... This may take 30-60 seconds if model is cold. Please wait.');
+      try {
+        testSketchURL = await generateSketch(suspectData);
+        setStatus('s4', 'success', '✓ PASSED');
+        const img = document.getElementById('sketchResult');
+        img.src = testSketchURL;
+        img.style.display = 'block';
+        showResult('r4', `SUCCESS — Sketch generated.\nImage URL: ${testSketchURL}`);
+        return true;
+      } catch(e) {
+        setStatus('s4', 'fail', '✗ FAILED');
+        showResult('r4', `ERROR:\n${e.message}\n\nFix: Check your HF_API_KEY in api.js. If key is correct, the model may be loading — wait 30 seconds and try again.`);
+        return false;
+      }
+    }
+
+    // ============================================================
+    // TEST 5 — downloadPDF
+    // ============================================================
+    async function testPDF() {
+      const data = testCrimeData || {
+        suspect: { age: "35", gender: "Male", height: "Tall", build: "Medium", skin_tone: "Dark", hair: "Short black", eyes: "Dark brown", clothing: "Black jacket, blue jeans", distinctive_marks: "Scar on left cheek" },
+        vehicle: { type: "Motorcycle", color: "Red", make: "Unknown", number_plate: "MH-12-AB-3456", condition: "Good" },
+        scene: { location: "Near Dadar Station, Mumbai", time_of_incident: "9:00 PM", environment: "Urban street", landmarks: "Dadar Railway Station", weather: "Dark and raining" },
+        incident_summary: "Robbery near Dadar station by a tall male suspect on a red motorcycle."
+      };
+      const fir = testFirText || "FIR text not generated yet. Run Test 3 first for full FIR in PDF.";
+
+      setStatus('s5', 'running', 'RUNNING...');
+      showResult('r5', 'Generating PDF...');
+      try {
+        await downloadPDF(data, fir, testSketchURL, DUMMY_CASE, DUMMY_OFFICER);
+        setStatus('s5', 'success', '✓ PASSED');
+        showResult('r5', 'SUCCESS — PDF downloaded. Check your Downloads folder.');
+        return true;
+      } catch(e) {
+        setStatus('s5', 'fail', '✗ FAILED');
+        showResult('r5', `ERROR:\n${e.message}`);
+        return false;
+      }
+    }
+
+    // ============================================================
+    // RUN ALL TESTS IN ORDER
+    // ============================================================
+    async function runAllTests() {
+      updateGlobal('Running all tests...');
+      let passed = 0;
+
+      updateGlobal('Test 1 running...');
+      if (await testGemini()) passed++;
+
+      updateGlobal('Test 2 running...');
+      if (await testAnalyze()) passed++;
+
+      updateGlobal('Test 3 running...');
+      if (await testFIR()) passed++;
+
+      updateGlobal('Test 4 running... (HuggingFace may take 30-60 seconds)');
+      if (await testSketch()) passed++;
+
+      updateGlobal('Test 5 running...');
+      if (await testPDF()) passed++;
+
+      updateGlobal(`All tests done — ${passed}/5 passed. ${passed === 5 ? '✓ Ready to hand to Person 1!' : '✗ Fix the failed tests before merging.'}`);
+    }
+  </script>
+</body>
+</html>

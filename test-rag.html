@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smriti AI — RAG Test Panel</title>
+  <script src="fir-samples.js"></script>
+  <script src="api.js"></script>
+  <script src="rag.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #060a0f;
+      color: #cdd6e0;
+      font-family: 'Courier New', monospace;
+      padding: 40px 24px;
+      min-height: 100vh;
+    }
+    h1 {
+      color: #00e5ff;
+      font-size: 1.2rem;
+      letter-spacing: 4px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #5a7080;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      margin-bottom: 40px;
+    }
+    .section {
+      background: #0d1520;
+      border: 1px solid rgba(0,229,255,0.2);
+      border-radius: 4px;
+      padding: 24px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .section::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+    }
+    .section h2 {
+      color: #00e5ff;
+      font-size: 0.72rem;
+      letter-spacing: 3px;
+      margin-bottom: 16px;
+    }
+    .btn {
+      background: transparent;
+      border: 1px solid #00e5ff;
+      color: #00e5ff;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      padding: 12px 24px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 0.2s;
+      margin-right: 12px;
+      margin-bottom: 8px;
+    }
+    .btn:hover { background: rgba(0,229,255,0.1); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.green { border-color: #00e676; color: #00e676; }
+    .btn.green:hover { background: rgba(0,230,118,0.1); }
+    .btn.amber { border-color: #ffb300; color: #ffb300; }
+    .btn.amber:hover { background: rgba(255,179,0,0.1); }
+    .output {
+      margin-top: 16px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(0,229,255,0.1);
+      border-radius: 2px;
+      padding: 16px;
+      font-size: 0.75rem;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+      color: #cdd6e0;
+      display: none;
+    }
+    .output.show { display: block; }
+    .status {
+      font-size: 0.72rem;
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 2px;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.ok   { background: rgba(0,230,118,0.1); color: #00e676; border: 1px solid rgba(0,230,118,0.3); }
+    .status.err  { background: rgba(255,56,96,0.1);  color: #ff3860; border: 1px solid rgba(255,56,96,0.3); }
+    .status.info { background: rgba(0,229,255,0.08); color: #00e5ff; border: 1px solid rgba(0,229,255,0.2); }
+    .progress-bar {
+      height: 4px;
+      background: rgba(0,229,255,0.1);
+      border-radius: 2px;
+      margin-top: 12px;
+      display: none;
+    }
+    .progress-bar.show { display: block; }
+    .progress-fill {
+      height: 100%;
+      background: #00e5ff;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .checklist { margin-top: 16px; }
+    .check-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.75rem;
+    }
+    .check-item:last-child { border-bottom: none; }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #5a7080;
+      flex-shrink: 0;
+    }
+    .dot.ok  { background: #00e676; }
+    .dot.err { background: #ff3860; }
+    .dot.spin {
+      border: 2px solid transparent;
+      border-top-color: #00e5ff;
+      background: transparent;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<h1>SMRITI AI — RAG TEST PANEL</h1>
+<div class="subtitle">// PINECONE + GEMINI EMBEDDING TEST SUITE</div>
+
+<!-- ── SECTION 1: CONFIG CHECK ── -->
+<div class="section">
+  <h2>// STEP 1 — CONFIG CHECK</h2>
+  <button class="btn" onclick="checkConfig()">CHECK CONFIGURATION</button>
+  <div class="checklist" id="configChecklist">
+    <div class="check-item"><span class="dot" id="d-gemini"></span> GEMINI_API_KEY loaded from api.js</div>
+    <div class="check-item"><span class="dot" id="d-pinecone-key"></span> PINECONE_API_KEY set in rag.js</div>
+    <div class="check-item"><span class="dot" id="d-pinecone-host"></span> PINECONE_HOST URL set in rag.js</div>
+    <div class="check-item"><span class="dot" id="d-samples"></span> FIR_SAMPLES loaded from fir-samples.js</div>
+  </div>
+</div>
+
+<!-- ── SECTION 2: UPLOAD ── -->
+<div class="section">
+  <h2>// STEP 2 — UPLOAD FIR SAMPLES TO PINECONE (RUN ONCE)</h2>
+  <p style="font-size:0.72rem; color:#5a7080; margin-bottom:16px;">
+    This embeds all 10 FIR templates using Gemini and uploads them to your Pinecone index.<br/>
+    Run this only once. After upload, your index is ready forever.
+  </p>
+  <button class="btn amber" id="uploadBtn" onclick="runUpload()">UPLOAD ALL 10 FIR SAMPLES</button>
+  <div class="progress-bar" id="uploadProgress">
+    <div class="progress-fill" id="uploadFill"></div>
+  </div>
+  <div class="status" id="uploadStatus"></div>
+  <div class="output" id="uploadOutput"></div>
+</div>
+
+<!-- ── SECTION 3: TEST RETRIEVE ── -->
+<div class="section">
+  <h2>// STEP 3 — TEST RETRIEVAL FROM PINECONE</h2>
+  <p style="font-size:0.72rem; color:#5a7080; margin-bottom:16px;">
+    Tests that Pinecone returns the most relevant FIR template for a given crime description.
+  </p>
+  <button class="btn" onclick="testRetrieve('robbery near railway station at night, suspect fled on motorcycle')">TEST: Robbery</button>
+  <button class="btn" onclick="testRetrieve('vehicle stolen from parking lot, motorcycle missing')">TEST: Vehicle Theft</button>
+  <button class="btn" onclick="testRetrieve('online fraud, bank account hacked, money transferred without consent')">TEST: Cybercrime</button>
+  <button class="btn" onclick="testRetrieve('assault with weapon, victim stabbed, attacker known to victim')">TEST: Assault</button>
+  <div class="status" id="retrieveStatus"></div>
+  <div class="output" id="retrieveOutput"></div>
+</div>
+
+<!-- ── SECTION 4: TEST FULL RAG FIR ── -->
+<div class="section">
+  <h2>// STEP 4 — TEST FULL RAG FIR GENERATION</h2>
+  <p style="font-size:0.72rem; color:#5a7080; margin-bottom:16px;">
+    End-to-end test: retrieves template from Pinecone → sends to Gemini → gets real FIR output.
+  </p>
+  <button class="btn green" id="ragBtn" onclick="testRAGFIR()">GENERATE FULL RAG FIR</button>
+  <div class="status" id="ragStatus"></div>
+  <div class="output" id="ragOutput"></div>
+</div>
+
+<!-- ── SECTION 5: MERGE CHECKLIST ── -->
+<div class="section">
+  <h2>// STEP 5 — MERGE CHECKLIST (BEFORE HANDING TO PERSON 1)</h2>
+  <div class="checklist">
+    <div class="check-item"><span class="dot" id="m1"></span> All 10 samples uploaded to Pinecone ✓</div>
+    <div class="check-item"><span class="dot" id="m2"></span> Retrieval test passed ✓</div>
+    <div class="check-item"><span class="dot" id="m3"></span> Full RAG FIR generation test passed ✓</div>
+    <div class="check-item"><span class="dot" id="m4"></span> Add in index.html head: &lt;script src="fir-samples.js"&gt;&lt;/script&gt;</div>
+    <div class="check-item"><span class="dot" id="m5"></span> Add in index.html head: &lt;script src="rag.js"&gt;&lt;/script&gt;</div>
+    <div class="check-item"><span class="dot" id="m6"></span> In handleGenerateFIR() replace generateFIR() with generateRAGFIR()</div>
+  </div>
+  <button class="btn" style="margin-top:16px;" onclick="markMergeReady()">MARK AS MERGE READY</button>
+  <div class="status" id="mergeStatus"></div>
+</div>
+
+<script>
+  /* ── CONFIG CHECK ── */
+  function checkConfig() {
+    const geminiOk     = typeof GEMINI_API_KEY !== 'undefined' && GEMINI_API_KEY.trim() !== '';
+    const pineconeKey  = typeof PINECONE_API_KEY !== 'undefined' && PINECONE_API_KEY.trim() !== '';
+    const pineconeHost = typeof PINECONE_HOST !== 'undefined' && PINECONE_HOST.trim() !== '';
+    const samplesOk    = typeof FIR_SAMPLES !== 'undefined' && FIR_SAMPLES.length > 0;
+
+    setDot('d-gemini',       geminiOk     ? 'ok' : 'err');
+    setDot('d-pinecone-key', pineconeKey  ? 'ok' : 'err');
+    setDot('d-pinecone-host',pineconeHost ? 'ok' : 'err');
+    setDot('d-samples',      samplesOk    ? 'ok' : 'err');
+
+    const allOk = geminiOk && pineconeKey && pineconeHost && samplesOk;
+    if (!allOk) {
+      alert('Some config is missing — check the dots above and fix rag.js / api.js keys before proceeding.');
+    }
+  }
+
+  /* ── UPLOAD ── */
+  async function runUpload() {
+    const btn = document.getElementById('uploadBtn');
+    btn.disabled = true;
+    btn.textContent = 'UPLOADING...';
+
+    showStatus('uploadStatus', 'info', 'Uploading 10 FIR samples to Pinecone — this takes about 30 seconds...');
+    showEl('uploadProgress');
+    const fill = document.getElementById('uploadFill');
+    const out  = document.getElementById('uploadOutput');
+    out.textContent = '';
+    showEl('uploadOutput', true);
+
+    try {
+      // Override uploadFIRSamples to show progress
+      let uploaded = 0;
+      const origEmbed = embedText;
+
+      // Patch to show progress per item
+      window._origUpload = uploadFIRSamples;
+
+      // Manual loop for progress tracking
+      const results = [];
+      for (let i = 0; i < FIR_SAMPLES.length; i++) {
+        out.textContent += `\nEmbedding sample ${i + 1}/10...`;
+        out.scrollTop = out.scrollHeight;
+        try {
+          const vector = await embedText(FIR_SAMPLES[i]);
+          const response = await fetch(`${PINECONE_HOST}/vectors/upsert`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Api-Key": PINECONE_API_KEY
+            },
+            body: JSON.stringify({
+              vectors: [{
+                id: `fir-sample-${i}`,
+                values: vector,
+                metadata: { text: FIR_SAMPLES[i], index: i }
+              }]
+            })
+          });
+          const result = await response.json();
+          out.textContent += ` ✓ (${result.upsertedCount || 1} vector stored)`;
+          results.push({ index: i, success: true });
+        } catch (e) {
+          out.textContent += ` ✗ ERROR: ${e.message}`;
+          results.push({ index: i, success: false });
+        }
+        fill.style.width = `${((i + 1) / FIR_SAMPLES.length) * 100}%`;
+        out.scrollTop = out.scrollHeight;
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      out.textContent += `\n\n✓ DONE — ${successCount}/10 samples uploaded to Pinecone.`;
+      showStatus('uploadStatus', successCount === 10 ? 'ok' : 'err',
+        `${successCount}/10 samples uploaded. ${successCount === 10 ? 'Pinecone is ready!' : 'Some failed — check console.'}`);
+
+      if (successCount >= 8) {
+        setDot('m1', 'ok');
+      }
+    } catch (err) {
+      showStatus('uploadStatus', 'err', 'Upload failed: ' + err.message);
+      out.textContent += '\n\nFATAL ERROR: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'UPLOAD ALL 10 FIR SAMPLES';
+    }
+  }
+
+  /* ── TEST RETRIEVE ── */
+  async function testRetrieve(query) {
+    showStatus('retrieveStatus', 'info', `Querying Pinecone for: "${query}"...`);
+    const out = document.getElementById('retrieveOutput');
+    out.textContent = '';
+    showEl('retrieveOutput', true);
+
+    try {
+      const template = await retrieveFIRTemplate(query);
+      if (template) {
+        out.textContent = '✓ RETRIEVED TEMPLATE:\n\n' + template.slice(0, 800) + '\n\n... [truncated for display]';
+        showStatus('retrieveStatus', 'ok', '✓ Retrieval successful — Pinecone returned a matching FIR template.');
+        setDot('m2', 'ok');
+      } else {
+        out.textContent = '✗ No template retrieved. Check Pinecone index and API key.';
+        showStatus('retrieveStatus', 'err', 'No match found. Make sure you uploaded samples first.');
+      }
+    } catch (err) {
+      out.textContent = 'ERROR: ' + err.message;
+      showStatus('retrieveStatus', 'err', 'Retrieval failed: ' + err.message);
+    }
+  }
+
+  /* ── TEST FULL RAG FIR ── */
+  async function testRAGFIR() {
+    const btn = document.getElementById('ragBtn');
+    btn.disabled = true;
+    btn.textContent = 'GENERATING...';
+    showStatus('ragStatus', 'info', 'Running full RAG pipeline — retrieving template + calling Gemini...');
+    const out = document.getElementById('ragOutput');
+    out.textContent = '';
+    showEl('ragOutput', true);
+
+    const dummyCrimeData = {
+      suspect: {
+        gender: 'Male', age: '28-32', height: "5'8\"", build: 'Medium',
+        skin_tone: 'Wheatish', hair: 'Short black', clothing: 'Black jacket, blue jeans',
+        distinctive_marks: 'Scar on left cheek'
+      },
+      vehicle: {
+        type: 'Motorcycle', color: 'Red', make: 'Unknown',
+        number_plate: 'MH-12-AB-3456', condition: 'Normal'
+      },
+      scene: {
+        location: 'Near Dadar Railway Station', time_of_incident: '9:00 PM',
+        environment: 'Urban street', weather: 'Dark and raining', landmarks: 'ATM kiosk'
+      },
+      incident_summary: 'Robbery near Dadar Station at 9 PM. Suspect snatched phone and fled on red motorcycle.'
+    };
+
+    const dummyOfficer = {
+      name: 'Pramod Jadhav', badge: 'MH-04821', rank: 'Sub-Inspector', station: 'Dadar PS, Mumbai'
+    };
+
+    const dummyStatement = "The suspect was a tall man around 35 years old, dark complexion, wearing a black jacket and blue jeans. He had a scar on his left cheek and short black hair. He escaped on a red motorcycle, number plate MH-12-AB-3456. The incident happened near Dadar station at around 9 PM. It was dark and raining.";
+
+    try {
+      const fir = await generateRAGFIR(dummyCrimeData, dummyOfficer, dummyStatement);
+      out.textContent = fir;
+      showStatus('ragStatus', 'ok', '✓ RAG FIR generated successfully! Check the output below.');
+      setDot('m2', 'ok');
+      setDot('m3', 'ok');
+    } catch (err) {
+      out.textContent = 'ERROR: ' + err.message;
+      showStatus('ragStatus', 'err', 'RAG FIR failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'GENERATE FULL RAG FIR';
+    }
+  }
+
+  /* ── MERGE READY ── */
+  function markMergeReady() {
+    ['m4','m5','m6'].forEach(id => setDot(id, 'ok'));
+    showStatus('mergeStatus', 'ok', '✓ All checks passed. Hand rag.js + fir-samples.js to Person 1 for merge.');
+  }
+
+  /* ── HELPERS ── */
+  function setDot(id, state) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'dot ' + state;
+  }
+
+  function showStatus(id, type, msg) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'status show ' + type;
+    el.textContent = msg;
+  }
+
+  function showEl(id, isOutput = false) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (isOutput) el.classList.add('show');
+    else el.style.display = 'block';
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Multilingual Test</title>
+  <script src="api.js"></script>
+  <style>
+    body { background:#060a0f; color:#cdd6e0; font-family:monospace; padding:40px; }
+    h1 { color:#00e5ff; margin-bottom:24px; }
+    textarea { width:100%; height:120px; background:#0d1520; border:1px solid #00e5ff;
+      color:#cdd6e0; padding:12px; font-size:1rem; border-radius:4px; margin-bottom:12px; }
+    button { background:transparent; border:1px solid #00e5ff; color:#00e5ff;
+      padding:12px 24px; font-size:0.9rem; cursor:pointer; border-radius:4px; margin-right:8px; margin-bottom:8px; }
+    button:hover { background:rgba(0,229,255,0.1); }
+    button.red { border-color:#ff3860; color:#ff3860; }
+    button.green { border-color:#00e676; color:#00e676; }
+    #status { color:#ffb300; margin:8px 0; font-size:0.85rem; min-height:20px; }
+    #englishBox { background:#0d1520; border:1px solid #00e676; color:#cdd6e0;
+      padding:16px; border-radius:4px; margin-top:16px; min-height:80px;
+      white-space:pre-wrap; font-size:0.9rem; display:none; }
+    #geminiBox { background:#0d1520; border:1px solid #ffb300; color:#cdd6e0;
+      padding:16px; border-radius:4px; margin-top:12px; min-height:80px;
+      white-space:pre-wrap; font-size:0.9rem; display:none; }
+    .label { font-size:0.75rem; color:#5a7080; letter-spacing:2px; margin-bottom:6px; }
+  </style>
+</head>
+<body>
+
+<h1>MULTILINGUAL INPUT TEST</h1>
+
+<!-- STEP 1: INPUT -->
+<div class="label">STEP 1 — SPEAK OR TYPE IN ANY LANGUAGE</div>
+<textarea id="inputText" placeholder="Type here in Hindi / English / Punjabi / any language..."></textarea>
+
+<button id="micBtn" onclick="toggleMic()">🎙️ START VOICE</button>
+<button class="green" onclick="runTranslateAndAnalyze()">⚡ TRANSLATE + SEND TO GEMINI</button>
+<button class="red" onclick="clearAll()">✕ CLEAR</button>
+
+<div id="status"></div>
+
+<!-- STEP 2: ENGLISH OUTPUT -->
+<div id="englishLabel" class="label" style="display:none; margin-top:16px;">STEP 2 — TRANSLATED TO ENGLISH</div>
+<div id="englishBox"></div>
+
+<!-- STEP 3: GEMINI OUTPUT -->
+<div id="geminiLabel" class="label" style="display:none; margin-top:12px;">STEP 3 — GEMINI ANALYSIS (CRIME DATA)</div>
+<div id="geminiBox"></div>
+
+<script>
+  let isRecording = false;
+  let recognition = null;
+
+  /* ── MIC ── */
+  function toggleMic() {
+    isRecording = !isRecording;
+    const btn = document.getElementById('micBtn');
+
+    if (isRecording) {
+      btn.textContent = '⏹️ STOP VOICE';
+      btn.className = 'red';
+      setStatus('● Recording... speak now');
+
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { setStatus('ERROR: Use Chrome for voice input'); isRecording = false; return; }
+
+      recognition = new SR();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = ''; // auto-detect language
+
+      let finalText = '';
+      recognition.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+          else interim += e.results[i][0].transcript;
+        }
+        document.getElementById('inputText').value = finalText + interim;
+      };
+      recognition.onerror = (e) => setStatus('Mic error: ' + e.error);
+      recognition.onend   = () => { if (isRecording) recognition.start(); };
+      recognition.start();
+
+    } else {
+      btn.textContent = '🎙️ START VOICE';
+      btn.className = '';
+      setStatus('Recording stopped. Click TRANSLATE + SEND TO GEMINI.');
+      if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
+    }
+  }
+
+  /* ── MAIN FUNCTION ── */
+  async function runTranslateAndAnalyze() {
+    const input = document.getElementById('inputText').value.trim();
+    if (!input) { setStatus('ERROR: Please speak or type something first.'); return; }
+
+    if (isRecording) toggleMic(); // stop mic if still on
+
+    // ── STEP 1: Translate to English using Gemini ──
+    setStatus('Translating to English...');
+    let englishText = '';
+    try {
+      const translatePrompt = `Translate the following text to English. If it is already in English, return it as-is. Return ONLY the translated text, nothing else, no explanations.
+
+Text: ${input}`;
+
+      englishText = await callGemini(translatePrompt);
+      englishText = englishText.trim();
+
+      document.getElementById('englishBox').textContent = englishText;
+      document.getElementById('englishBox').style.display = 'block';
+      document.getElementById('englishLabel').style.display = 'block';
+      setStatus('Translated. Now sending to Gemini for crime analysis...');
+    } catch (err) {
+      setStatus('Translation error: ' + err.message); return;
+    }
+
+    // ── STEP 2: Send English text to Gemini for crime extraction ──
+    try {
+      const analysisPrompt = `You are a forensic analyst. Extract crime details from this witness statement and return ONLY a JSON object with this exact structure, no markdown, no backticks:
+
+{
+  "suspect": {
+    "gender": "",
+    "age": "",
+    "height": "",
+    "build": "",
+    "skin_tone": "",
+    "hair": "",
+    "clothing": "",
+    "distinctive_marks": ""
+  },
+  "vehicle": {
+    "type": "",
+    "color": "",
+    "make": "",
+    "number_plate": "",
+    "condition": ""
+  },
+  "scene": {
+    "location": "",
+    "time_of_incident": "",
+    "environment": "",
+    "landmarks": "",
+    "weather": ""
+  },
+  "incident_summary": ""
+}
+
+Witness Statement: ${englishText}`;
+
+      const raw = await callGemini(analysisPrompt);
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd   = cleaned.lastIndexOf('}');
+      const parsed    = JSON.parse(cleaned.substring(jsonStart, jsonEnd + 1));
+
+      document.getElementById('geminiBox').textContent = JSON.stringify(parsed, null, 2);
+      document.getElementById('geminiBox').style.display = 'block';
+      document.getElementById('geminiLabel').style.display = 'block';
+      setStatus('✓ DONE — Translation + Gemini analysis complete!');
+    } catch (err) {
+      setStatus('Gemini analysis error: ' + err.message);
+    }
+  }
+
+  function clearAll() {
+    if (isRecording) toggleMic();
+    document.getElementById('inputText').value = '';
+    document.getElementById('englishBox').textContent = '';
+    document.getElementById('englishBox').style.display = 'none';
+    document.getElementById('englishLabel').style.display = 'none';
+    document.getElementById('geminiBox').textContent = '';
+    document.getElementById('geminiBox').style.display = 'none';
+    document.getElementById('geminiLabel').style.display = 'none';
+    setStatus('Cleared.');
+  }
+
+  function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+  }
+</script>
+</body>
+</html>

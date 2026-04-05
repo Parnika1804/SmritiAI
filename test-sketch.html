@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Crime Scene Sketch Generator</title>
+<script src="api.js"></script>
+<style>
+  body { background:#060a0f; color:#cdd6e0; font-family:'Share Tech Mono',monospace; padding:24px; margin:0; }
+  h1 { color:#00e5ff; font-size:20px; margin-bottom:20px; letter-spacing:2px; }
+  textarea { width:100%; box-sizing:border-box; background:#0d1520; border:1px solid #00e5ff44; color:#cdd6e0; font-family:monospace; font-size:14px; padding:12px; border-radius:4px; resize:vertical; min-height:120px; }
+  button { margin-top:12px; background:transparent; border:1px solid #00e5ff; color:#00e5ff; padding:10px 28px; font-family:monospace; font-size:14px; letter-spacing:1px; cursor:pointer; border-radius:4px; }
+  button:hover { background:#00e5ff22; }
+  button:disabled { opacity:0.4; cursor:not-allowed; }
+  #status { margin-top:12px; font-size:13px; color:#aaa; min-height:20px; }
+  #sketchArea { margin-top:20px; background:#0d1520; border:1px solid #00e5ff22; border-radius:6px; padding:16px; min-height:400px; display:none; }
+  #sketchArea h3 { color:#00e5ff; font-size:13px; letter-spacing:1px; margin:0 0 12px; }
+  #svgContainer svg { width:100%; height:auto; }
+  #videoArea { margin-top:16px; display:none; }
+  #videoArea h3 { color:#00e5ff; font-size:13px; letter-spacing:1px; }
+  canvas { width:100%; border:1px solid #00e5ff22; border-radius:4px; display:block; }
+  .tabs { display:flex; gap:8px; margin-top:16px; }
+  .tab { padding:8px 18px; border:1px solid #00e5ff44; color:#aaa; background:transparent; font-family:monospace; font-size:12px; cursor:pointer; border-radius:4px; letter-spacing:1px; }
+  .tab.active { border-color:#00e5ff; color:#00e5ff; background:#00e5ff11; }
+  #extractedData { margin-top:12px; font-size:12px; color:#8899aa; background:#0a1018; padding:12px; border-radius:4px; white-space:pre-wrap; border-left:2px solid #00e5ff44; }
+</style>
+</head>
+<body>
+<h1>CRIME SCENE SKETCH GENERATOR</h1>
+
+<textarea id="complaint" placeholder="Enter complaint in any language (Hindi, Punjabi, English)...
+Example: A robbery took place at a shop. Two men entered from the main door, one stood near the counter with a knife, the other grabbed cash from the register. A woman was near the window. They escaped through the back door."></textarea>
+
+<div class="tabs">
+  <button class="tab active" onclick="setMode('sketch')" id="tabSketch">2D SKETCH</button>
+  <button class="tab" onclick="setMode('video')" id="tabVideo">ANIMATION</button>
+</div>
+
+<button id="genBtn" onclick="generate()">GENERATE SCENE</button>
+<div id="status"></div>
+
+<div id="sketchArea">
+  <h3>2D CRIME SCENE SKETCH</h3>
+  <div id="svgContainer"></div>
+</div>
+
+<div id="videoArea">
+  <h3>CRIME SCENE ANIMATION</h3>
+  <canvas id="animCanvas" width="700" height="420"></canvas>
+</div>
+
+<div id="extractedData" style="display:none"></div>
+
+<script>
+let currentMode = 'sketch';
+let sceneData = null;
+let animFrame = null;
+
+function setMode(m) {
+  currentMode = m;
+  document.getElementById('tabSketch').className = 'tab' + (m==='sketch'?' active':'');
+  document.getElementById('tabVideo').className = 'tab' + (m==='video'?' active':'');
+}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+async function generate() {
+  const complaint = document.getElementById('complaint').value.trim();
+  if (!complaint) { setStatus('⚠ Please enter a complaint first.'); return; }
+
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  setStatus('🔄 Translating & extracting scene data...');
+
+  try {
+    const prompt = `You are a forensic scene analyst. Given a crime complaint, extract scene data and return ONLY valid JSON, no markdown, no explanation.
+
+Complaint: "${complaint}"
+
+Return this exact JSON structure:
+{
+  "location": "brief location name",
+  "persons": [
+    {"id":"p1","label":"Suspect 1","role":"suspect","x":0.3,"y":0.4,"color":"#e74c3c"},
+    {"id":"p2","label":"Victim","role":"victim","x":0.6,"y":0.5,"color":"#3498db"}
+  ],
+  "objects": [
+    {"id":"o1","label":"Door","type":"door","x":0.1,"y":0.5,"w":0.06,"h":0.12},
+    {"id":"o2","label":"Counter","type":"furniture","x":0.5,"y":0.3,"w":0.15,"h":0.08},
+    {"id":"o3","label":"Window","type":"window","x":0.8,"y":0.2,"w":0.04,"h":0.1}
+  ],
+  "paths": [
+    {"id":"mv1","actor":"p1","from":{"x":0.1,"y":0.5},"to":{"x":0.5,"y":0.4},"label":"entry","color":"#e74c3c"},
+    {"id":"mv2","actor":"p1","from":{"x":0.5,"y":0.4},"to":{"x":0.8,"y":0.6},"label":"escape","color":"#e67e22"}
+  ],
+  "summary": "one line summary of what happened"
+}
+
+Rules:
+- x,y are 0.0 to 1.0 (fraction of scene width/height)
+- w,h for objects are 0.0 to 1.0
+- Include 2-5 persons, 3-8 objects, 2-4 paths
+- person roles: suspect/victim/witness/officer
+- object types: door/window/furniture/vehicle/weapon/counter/wall
+- Make coordinates realistic (doors on edges, furniture interior, etc)`;
+
+    const raw = await callGemini(prompt);
+    const clean = raw.replace(/```json|```/g,'').trim();
+    const data = JSON.parse(clean);
+    sceneData = data;
+
+    document.getElementById('extractedData').style.display='block';
+    document.getElementById('extractedData').textContent = '📍 ' + data.location + '\n📝 ' + data.summary;
+
+    setStatus('✓ Scene extracted. Rendering...');
+
+    if (currentMode === 'sketch') {
+      renderSketch(data);
+    } else {
+      renderAnimation(data);
+    }
+    setStatus('✓ Done — scene generated from complaint.');
+  } catch(e) {
+    setStatus('✗ Error: ' + e.message);
+    console.error(e);
+  }
+  btn.disabled = false;
+}
+
+function renderSketch(data) {
+  const W = 700, H = 420;
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  const svg = document.createElementNS(svgNS,'svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('xmlns',svgNS);
+
+  const bg = document.createElementNS(svgNS,'rect');
+  bg.setAttribute('width',W); bg.setAttribute('height',H);
+  bg.setAttribute('fill','#0a1520'); bg.setAttribute('rx','6');
+  svg.appendChild(bg);
+
+  const wall = document.createElementNS(svgNS,'rect');
+  wall.setAttribute('x','20'); wall.setAttribute('y','20');
+  wall.setAttribute('width',W-40); wall.setAttribute('height',H-40);
+  wall.setAttribute('fill','none'); wall.setAttribute('stroke','#00e5ff44');
+  wall.setAttribute('stroke-width','2'); wall.setAttribute('rx','4');
+  svg.appendChild(wall);
+
+  const title = document.createElementNS(svgNS,'text');
+  title.setAttribute('x',W/2); title.setAttribute('y','15');
+  title.setAttribute('text-anchor','middle'); title.setAttribute('fill','#00e5ff88');
+  title.setAttribute('font-size','10'); title.setAttribute('font-family','monospace');
+  title.textContent = (data.location||'CRIME SCENE').toUpperCase();
+  svg.appendChild(title);
+
+  const defs = document.createElementNS(svgNS,'defs');
+  ['e74c3c','3498db','2ecc71','f39c12','9b59b6'].forEach(c=>{
+    const m = document.createElementNS(svgNS,'marker');
+    m.setAttribute('id','arr'+c); m.setAttribute('markerWidth','8'); m.setAttribute('markerHeight','8');
+    m.setAttribute('refX','6'); m.setAttribute('refY','3'); m.setAttribute('orient','auto');
+    const p = document.createElementNS(svgNS,'path');
+    p.setAttribute('d','M0,0 L0,6 L8,3 z'); p.setAttribute('fill','#'+c);
+    m.appendChild(p); defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  (data.objects||[]).forEach(obj=>{
+    const ox = 20 + obj.x*(W-40), oy = 20 + obj.y*(H-40);
+    const ow = obj.w*(W-40), oh = obj.h*(H-40);
+    const g = document.createElementNS(svgNS,'g');
+
+    const r = document.createElementNS(svgNS,'rect');
+    r.setAttribute('x',ox-ow/2); r.setAttribute('y',oy-oh/2);
+    r.setAttribute('width',ow); r.setAttribute('height',oh);
+
+    const typeColors = {door:'#00e5ff33',window:'#00aaff22',furniture:'#445566',counter:'#334455',vehicle:'#553344',weapon:'#662222',wall:'#223344'};
+    r.setAttribute('fill', typeColors[obj.type]||'#334455');
+    r.setAttribute('stroke', obj.type==='door'||obj.type==='window'?'#00e5ff':'#556677');
+    r.setAttribute('stroke-width','1'); r.setAttribute('rx','2');
+    g.appendChild(r);
+
+    if (obj.type==='door') {
+      const arc = document.createElementNS(svgNS,'path');
+      const ax=ox-ow/2, ay=oy-oh/2;
+      arc.setAttribute('d',`M${ax},${ay+oh} Q${ax+ow*1.2},${ay+oh*0.5} ${ax+ow},${ay}`);
+      arc.setAttribute('fill','none'); arc.setAttribute('stroke','#00e5ff66'); arc.setAttribute('stroke-dasharray','3,2'); arc.setAttribute('stroke-width','1');
+      g.appendChild(arc);
+    }
+
+    const lbl = document.createElementNS(svgNS,'text');
+    lbl.setAttribute('x',ox); lbl.setAttribute('y',oy+Math.max(oh/2,8)+12);
+    lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('fill','#8899aa');
+    lbl.setAttribute('font-size','9'); lbl.setAttribute('font-family','monospace');
+    lbl.textContent = obj.label;
+    g.appendChild(lbl);
+    svg.appendChild(g);
+  });
+
+  (data.paths||[]).forEach(path=>{
+    const fx = 20+path.from.x*(W-40), fy = 20+path.from.y*(H-40);
+    const tx = 20+path.to.x*(W-40), ty = 20+path.to.y*(H-40);
+    const col = (path.color||'#e74c3c').replace('#','');
+
+    const line = document.createElementNS(svgNS,'line');
+    line.setAttribute('x1',fx); line.setAttribute('y1',fy);
+    line.setAttribute('x2',tx); line.setAttribute('y2',ty);
+    line.setAttribute('stroke',path.color||'#e74c3c');
+    line.setAttribute('stroke-width','1.5');
+    line.setAttribute('stroke-dasharray','6,3');
+    line.setAttribute('marker-end',`url(#arr${col})`);
+    svg.appendChild(line);
+
+    const mx=(fx+tx)/2, my=(fy+ty)/2;
+    const lbl = document.createElementNS(svgNS,'text');
+    lbl.setAttribute('x',mx); lbl.setAttribute('y',my-5);
+    lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('fill',path.color||'#e74c3c');
+    lbl.setAttribute('font-size','9'); lbl.setAttribute('font-family','monospace');
+    lbl.textContent = path.label||'';
+    svg.appendChild(lbl);
+  });
+
+  const personSymbols = {suspect:'♦',victim:'●',witness:'▲',officer:'★'};
+  (data.persons||[]).forEach(p=>{
+    const px = 20+p.x*(W-40), py = 20+p.y*(H-40);
+    const col = p.color||'#e74c3c';
+    const g = document.createElementNS(svgNS,'g');
+
+    const body = document.createElementNS(svgNS,'circle');
+    body.setAttribute('cx',px); body.setAttribute('cy',py);
+    body.setAttribute('r','14'); body.setAttribute('fill',col+'33');
+    body.setAttribute('stroke',col); body.setAttribute('stroke-width','1.5');
+    g.appendChild(body);
+
+    const head = document.createElementNS(svgNS,'circle');
+    head.setAttribute('cx',px); head.setAttribute('cy',py-8);
+    head.setAttribute('r','5'); head.setAttribute('fill',col+'88');
+    head.setAttribute('stroke',col); head.setAttribute('stroke-width','1');
+    g.appendChild(head);
+
+    const torso = document.createElementNS(svgNS,'line');
+    torso.setAttribute('x1',px); torso.setAttribute('y1',py-3);
+    torso.setAttribute('x2',px); torso.setAttribute('y2',py+8);
+    torso.setAttribute('stroke',col); torso.setAttribute('stroke-width','1.5');
+    g.appendChild(torso);
+
+    const lbl = document.createElementNS(svgNS,'text');
+    lbl.setAttribute('x',px); lbl.setAttribute('y',py+24);
+    lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('fill',col);
+    lbl.setAttribute('font-size','9'); lbl.setAttribute('font-family','monospace');
+    lbl.textContent = p.label;
+    g.appendChild(lbl);
+
+    svg.appendChild(g);
+  });
+
+  const legend = [
+    {col:'#e74c3c',label:'Suspect'},
+    {col:'#3498db',label:'Victim'},
+    {col:'#2ecc71',label:'Witness'},
+    {col:'#f39c12',label:'Officer'}
+  ];
+  legend.forEach((l,i)=>{
+    const lx=30, ly=H-15-i*14;
+    const dot = document.createElementNS(svgNS,'circle');
+    dot.setAttribute('cx',lx); dot.setAttribute('cy',ly);
+    dot.setAttribute('r','4'); dot.setAttribute('fill',l.col);
+    svg.appendChild(dot);
+    const lt = document.createElementNS(svgNS,'text');
+    lt.setAttribute('x',lx+10); lt.setAttribute('y',ly+4);
+    lt.setAttribute('fill','#8899aa'); lt.setAttribute('font-size','9');
+    lt.setAttribute('font-family','monospace'); lt.textContent=l.label;
+    svg.appendChild(lt);
+  });
+
+  const container = document.getElementById('svgContainer');
+  container.innerHTML = '';
+  container.appendChild(svg);
+  document.getElementById('sketchArea').style.display='block';
+  document.getElementById('videoArea').style.display='none';
+}
+
+function renderAnimation(data) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  document.getElementById('videoArea').style.display='block';
+  document.getElementById('sketchArea').style.display='none';
+
+  const canvas = document.getElementById('animCanvas');
+  const ctx = canvas.getContext('2d');
+  const W=700,H=420;
+
+  const totalFrames = 300;
+  let frame = 0;
+
+  const persons = (data.persons||[]).map(p=>({
+    ...p,
+    cx: 20+p.x*(W-40), cy: 20+p.y*(H-40),
+    tx: 20+p.x*(W-40), ty: 20+p.y*(H-40)
+  }));
+
+  const paths = data.paths||[];
+  const pathSteps = paths.map(path=>({
+    ...path,
+    fx: 20+path.from.x*(W-40), fy: 20+path.from.y*(H-40),
+    tx: 20+path.to.x*(W-40), ty: 20+path.to.y*(H-40),
+    startFrac: 0, endFrac: 0
+  }));
+
+  function draw() {
+    const t = frame / totalFrames;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#0a1520'; ctx.fillRect(0,0,W,H);
+
+    ctx.strokeStyle='#00e5ff22'; ctx.lineWidth=2; ctx.strokeRect(20,20,W-40,H-40);
+
+    ctx.fillStyle='#00e5ff44'; ctx.font='10px monospace';
+    ctx.textAlign='center';
+    ctx.fillText((data.location||'CRIME SCENE').toUpperCase(), W/2, 14);
+
+    (data.objects||[]).forEach(obj=>{
+      const ox=20+obj.x*(W-40), oy=20+obj.y*(H-40);
+      const ow=obj.w*(W-40), oh=obj.h*(H-40);
+      const colors={door:'#00e5ff33',window:'#00aaff22',furniture:'#334455',counter:'#2a3a4a',vehicle:'#3a2a44',weapon:'#441515'};
+      ctx.fillStyle=colors[obj.type]||'#334455';
+      ctx.fillRect(ox-ow/2,oy-oh/2,ow,oh);
+      ctx.strokeStyle=obj.type==='door'||obj.type==='window'?'#00e5ff':'#445566';
+      ctx.lineWidth=1; ctx.strokeRect(ox-ow/2,oy-oh/2,ow,oh);
+      ctx.fillStyle='#6677aa'; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(obj.label,ox,oy+oh/2+12);
+    });
+
+    pathSteps.forEach((ps,i)=>{
+      const segStart = i/pathSteps.length;
+      const segEnd = (i+1)/pathSteps.length;
+      const segT = Math.max(0,Math.min(1,(t-segStart)/(segEnd-segStart)));
+
+      if (segT > 0) {
+        const ex = ps.fx + (ps.tx-ps.fx)*segT;
+        const ey = ps.fy + (ps.ty-ps.fy)*segT;
+
+        ctx.beginPath(); ctx.moveTo(ps.fx,ps.fy); ctx.lineTo(ex,ey);
+        ctx.strokeStyle=ps.color||'#e74c3c'; ctx.lineWidth=1.5;
+        ctx.setLineDash([6,3]); ctx.stroke(); ctx.setLineDash([]);
+
+        ctx.fillStyle=ps.color||'#e74c3c'; ctx.font='9px monospace'; ctx.textAlign='center';
+        ctx.fillText(ps.label||'', (ps.fx+ex)/2, (ps.fy+ey)/2-5);
+
+        const actor = persons.find(p=>p.id===ps.actor);
+        if (actor && segT > 0) {
+          actor.cx = ps.fx + (ps.tx-ps.fx)*segT;
+          actor.cy = ps.fy + (ps.ty-ps.fy)*segT;
+        }
+      }
+    });
+
+    persons.forEach(p=>{
+      const col = p.color||'#e74c3c';
+      ctx.strokeStyle=col; ctx.fillStyle=col+'44';
+      ctx.beginPath(); ctx.arc(p.cx,p.cy,14,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.cx,p.cy-8,5,0,Math.PI*2);
+      ctx.fillStyle=col+'88'; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.cx,p.cy-3); ctx.lineTo(p.cx,p.cy+8);
+      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle=col; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(p.label,p.cx,p.cy+24);
+    });
+
+    ctx.fillStyle='#445566'; ctx.font='9px monospace'; ctx.textAlign='left';
+    [{col:'#e74c3c',l:'Suspect'},{col:'#3498db',l:'Victim'},{col:'#2ecc71',l:'Witness'},{col:'#f39c12',l:'Officer'}].forEach((lk,i)=>{
+      ctx.fillStyle=lk.col; ctx.beginPath(); ctx.arc(30,H-15-i*14,4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#8899aa'; ctx.fillText(lk.l,40,H-11-i*14);
+    });
+
+    const prog = frame/totalFrames;
+    ctx.fillStyle='#00e5ff22'; ctx.fillRect(20,H-6,prog*(W-40),4);
+    ctx.fillStyle='#00e5ff'; ctx.fillRect(20,H-6,prog*(W-40),2);
+
+    frame++;
+    if (frame < totalFrames + 60) {
+      animFrame = requestAnimationFrame(draw);
+    } else {
+      frame = 0; animFrame = requestAnimationFrame(draw);
+    }
+  }
+
+  animFrame = requestAnimationFrame(draw);
+}
+</script>
+</body>
+</html>

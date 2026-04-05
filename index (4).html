@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smriti AI — Forensic Witness Interview System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- CHANGE 1: ethers.js CDN added for blockchain integration -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <script src="api.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #060a0f;
+      --surface:   #0d1520;
+      --surface2:  #111d2e;
+      --cyan:      #00e5ff;
+      --cyan-dim:  #00b8cc;
+      --cyan-glow: rgba(0,229,255,0.18);
+      --amber:     #ffb300;
+      --red:       #ff3860;
+      --green:     #00e676;
+      --text:      #cdd6e0;
+      --text-dim:  #5a7080;
+      --border:    rgba(0,229,255,0.22);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      display: none;
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      animation: fadeIn 0.4s ease;
+    }
+    .page.active { display: flex; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* STATUS BAR */
+    .statusbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: 36px;
+      background: rgba(6,10,15,0.95);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    .statusbar .logo-sm {
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      color: var(--cyan);
+      letter-spacing: 3px;
+    }
+    .statusbar .status-right {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+      display: flex; gap: 20px;
+    }
+    .statusbar .dot {
+      display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--green);
+      margin-right: 5px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* FORM CONTAINER */
+    .form-container {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 60px 24px 40px;
+      width: 100%;
+    }
+
+    /* LOGO */
+    .logo-block { text-align: center; margin-bottom: 40px; }
+    .logo-title {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(2.2rem, 6vw, 3.8rem);
+      font-weight: 900;
+      color: var(--cyan);
+      letter-spacing: 6px;
+      text-shadow: 0 0 30px rgba(0,229,255,0.5), 0 0 60px rgba(0,229,255,0.2);
+      line-height: 1;
+    }
+    .logo-sub {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      letter-spacing: 4px;
+      margin-top: 8px;
+    }
+    .logo-line {
+      width: 120px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      margin: 16px auto 0;
+    }
+
+    /* PANEL */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 36px 40px;
+      width: 100%; max-width: 480px;
+      position: relative;
+      box-shadow: 0 0 60px rgba(0,229,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .panel::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+    .panel-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.7rem;
+      color: var(--cyan);
+      letter-spacing: 4px;
+      margin-bottom: 28px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* INPUTS */
+    .field { margin-bottom: 20px; }
+    .field label {
+      display: block;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--cyan-dim);
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 11px 14px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border-radius: 2px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px var(--cyan-glow);
+    }
+    .field select option { background: var(--surface2); }
+    .field textarea { resize: vertical; min-height: 110px; }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: transparent;
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-family: 'Orbitron', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 3px;
+      padding: 13px 28px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+      width: 100%;
+      margin-top: 8px;
+      position: relative; overflow: hidden;
+    }
+    .btn::before {
+      content: '';
+      position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0,229,255,0.1), transparent);
+      transition: left 0.4s;
+    }
+    .btn:hover::before { left: 100%; }
+    .btn:hover { background: rgba(0,229,255,0.1); box-shadow: 0 0 20px rgba(0,229,255,0.25); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+    .btn.amber { border-color: var(--amber); color: var(--amber); }
+    .btn.amber:hover { background: rgba(255,179,0,0.1); box-shadow: 0 0 20px rgba(255,179,0,0.25); }
+    .btn.green { border-color: var(--green); color: var(--green); }
+    .btn.green:hover { background: rgba(0,230,118,0.1); box-shadow: 0 0 20px rgba(0,230,118,0.25); }
+    .btn.red { border-color: var(--red); color: var(--red); }
+    .btn.red:hover { background: rgba(255,56,96,0.1); box-shadow: 0 0 20px rgba(255,56,96,0.25); }
+
+    /* SPINNER */
+    .spinner {
+      display: none;
+      width: 14px; height: 14px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn.loading .spinner { display: inline-block; }
+    .btn.loading .btn-label { opacity: 0.5; }
+
+    /* PAGE 1 */
+    #page1 { flex-direction: column; }
+    .badge-row { display: flex; gap: 12px; }
+    .badge-row .field { flex: 1; }
+    .corner-decor {
+      position: fixed;
+      width: 60px; height: 60px;
+      border-color: rgba(0,229,255,0.2);
+      border-style: solid;
+    }
+    .corner-decor.tl { top: 44px; left: 12px; border-width: 2px 0 0 2px; }
+    .corner-decor.tr { top: 44px; right: 12px; border-width: 2px 2px 0 0; }
+    .corner-decor.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+    .corner-decor.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+    /* PAGE 2 */
+    #page2 { flex-direction: column; }
+    .step-indicator { display: flex; gap: 8px; margin-bottom: 24px; }
+    .step { flex: 1; height: 3px; background: var(--surface2); border-radius: 2px; }
+    .step.done { background: var(--cyan); }
+    .step.current { background: var(--cyan); opacity: 0.5; }
+
+    /* PAGE 3 */
+    #page3 { flex-direction: column; }
+    .rec-layout {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 60px 24px 40px;
+      gap: 28px; width: 100%;
+    }
+    .mic-wrapper {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mic-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid var(--cyan);
+      opacity: 0;
+    }
+    .mic-ring:nth-child(1) { width: 120px; height: 120px; }
+    .mic-ring:nth-child(2) { width: 155px; height: 155px; }
+    .mic-ring:nth-child(3) { width: 190px; height: 190px; }
+    .mic-btn {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--cyan);
+      color: var(--cyan);
+      font-size: 2rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; z-index: 1;
+      transition: background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 30px rgba(0,229,255,0.2);
+    }
+    .mic-btn:hover { background: rgba(0,229,255,0.1); box-shadow: 0 0 50px rgba(0,229,255,0.35); }
+    .mic-btn.recording { border-color: var(--red); color: var(--red); box-shadow: 0 0 50px rgba(255,56,96,0.4); }
+    .mic-btn.recording ~ .mic-ring { animation: ripple 1.8s ease-out infinite; }
+    .mic-btn.recording ~ .mic-ring:nth-child(2) { animation-delay: 0.4s; }
+    .mic-btn.recording ~ .mic-ring:nth-child(3) { animation-delay: 0.8s; }
+    @keyframes ripple {
+      0%   { opacity: 0.6; transform: scale(0.8); }
+      100% { opacity: 0; transform: scale(1.2); }
+    }
+    .rec-status {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 3px;
+      color: var(--text-dim);
+      text-align: center;
+    }
+    .rec-status.active { color: var(--red); animation: blink 1s step-start infinite; }
+    @keyframes blink { 50% { opacity: 0.4; } }
+    .transcript-block {
+      width: 100%; max-width: 700px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 20px;
+    }
+    .transcript-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--cyan);
+      letter-spacing: 3px;
+      margin-bottom: 10px;
+    }
+    #transcript {
+      width: 100%; min-height: 120px;
+      background: transparent; border: none;
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      outline: none; resize: vertical;
+    }
+    .waveform {
+      display: flex; align-items: center; justify-content: center; gap: 3px;
+      height: 32px; margin-bottom: 4px;
+    }
+    .wave-bar { width: 3px; background: var(--cyan); border-radius: 2px; height: 8px; transition: height 0.1s; }
+    .wave-bar.animating { animation: wave-anim 0.6s ease-in-out infinite alternate; }
+    .wave-bar:nth-child(1).animating { animation-delay: 0.0s; }
+    .wave-bar:nth-child(2).animating { animation-delay: 0.08s; }
+    .wave-bar:nth-child(3).animating { animation-delay: 0.16s; }
+    .wave-bar:nth-child(4).animating { animation-delay: 0.24s; }
+    .wave-bar:nth-child(5).animating { animation-delay: 0.32s; }
+    .wave-bar:nth-child(6).animating { animation-delay: 0.40s; }
+    .wave-bar:nth-child(7).animating { animation-delay: 0.48s; }
+    .wave-bar:nth-child(8).animating { animation-delay: 0.56s; }
+    .wave-bar:nth-child(9).animating { animation-delay: 0.20s; }
+    .wave-bar:nth-child(10).animating { animation-delay: 0.36s; }
+    @keyframes wave-anim { from { height: 4px; } to { height: 28px; } }
+
+    /* PAGE 4 */
+    #page4 { flex-direction: column; }
+    .results-layout {
+      flex: 1; padding: 56px 24px 40px;
+      width: 100%; max-width: 1100px; margin: 0 auto;
+    }
+    .results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .results-header h2 {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 4px;
+      color: var(--cyan);
+    }
+    .case-tag {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+    .cards-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) { .cards-row { grid-template-columns: 1fr; } }
+    .result-card {
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 4px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .result-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .result-card.suspect::before { background: var(--cyan); }
+    .result-card.vehicle::before { background: var(--amber); }
+    .result-card.scene::before   { background: var(--green); }
+    .result-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+    .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .card-icon { font-size: 1.1rem; }
+    .card-title {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 3px;
+    }
+    .card-title.suspect { color: var(--cyan); }
+    .card-title.vehicle { color: var(--amber); }
+    .card-title.scene   { color: var(--green); }
+    .card-row {
+      display: flex; justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.88rem;
+      gap: 8px;
+    }
+    .card-row:last-child { border-bottom: none; }
+    .card-key {
+      color: var(--text-dim);
+      font-size: 0.78rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .card-val { color: var(--text); font-weight: 600; text-align: right; word-break: break-word; }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) { .bottom-grid { grid-template-columns: 1fr; } }
+
+    .sketch-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 220px;
+      gap: 10px;
+      position: relative;
+      padding: 16px;
+    }
+    .sketch-box::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--amber);
+    }
+    .sketch-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 3px;
+      color: var(--amber);
+      margin-bottom: 6px;
+    }
+    .sketch-placeholder {
+      width: 100px; height: 130px;
+      background: rgba(255,179,0,0.06);
+      border: 1px dashed rgba(255,179,0,0.3);
+      border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      text-align: center;
+    }
+    #sketchImage {
+      max-width: 100%; max-height: 200px;
+      border-radius: 2px;
+      display: none;
+    }
+
+    .fir-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+      position: relative;
+    }
+    .fir-box::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--green);
+    }
+    .fir-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 3px;
+      color: var(--green);
+      margin-bottom: 10px;
+    }
+    #firText {
+      width: 100%; min-height: 180px;
+      background: transparent; border: none;
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.78rem;
+      line-height: 1.7;
+      outline: none; resize: vertical;
+    }
+
+    .action-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .action-row .btn { flex: 1; min-width: 160px; margin-top: 0; }
+
+    /* GLOBAL LOADING OVERLAY */
+    #loadingOverlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(6,10,15,0.88);
+      z-index: 500;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      backdrop-filter: blur(4px);
+    }
+    #loadingOverlay.active { display: flex; }
+    .overlay-spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    #loadingMsg {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--cyan);
+      letter-spacing: 3px;
+      text-align: center;
+    }
+
+    /* TOAST */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 12px 20px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--cyan);
+      z-index: 200;
+      transform: translateY(80px);
+      transition: transform 0.3s ease;
+      max-width: 320px;
+    }
+    .toast.show { transform: translateY(0); }
+    .toast.error { color: var(--red); border-color: rgba(255,56,96,0.4); }
+
+    /* BACK BUTTON */
+    .back-btn {
+      position: fixed; top: 44px; left: 16px;
+      background: transparent; border: none;
+      color: var(--text-dim);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      z-index: 50;
+      transition: color 0.2s;
+    }
+    .back-btn:hover { color: var(--cyan); }
+    .back-btn.hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- GLOBAL LOADING OVERLAY -->
+<div id="loadingOverlay">
+  <div class="overlay-spinner"></div>
+  <div id="loadingMsg">PROCESSING...</div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+  <span class="logo-sm">SMRITI AI</span>
+  <span class="status-right">
+    <span><span class="dot"></span>SYSTEM ONLINE</span>
+    <span id="clock">00:00:00</span>
+    <span>ECLIPSE 6.0</span>
+  </span>
+</div>
+
+<!-- CORNER DECORATIONS -->
+<div class="corner-decor tl"></div>
+<div class="corner-decor tr"></div>
+<div class="corner-decor bl"></div>
+<div class="corner-decor br"></div>
+
+<!-- BACK BUTTON -->
+<button class="back-btn hidden" id="backBtn" onclick="goBack()">← BACK</button>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════ PAGE 1 — LOGIN ═══════════════════ -->
+<div class="page active" id="page1">
+  <div class="form-container">
+    <div class="logo-block">
+      <div class="logo-title">SMRITI AI</div>
+      <div class="logo-sub">FORENSIC WITNESS INTERVIEW SYSTEM</div>
+      <div class="logo-line"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">// OFFICER AUTHENTICATION</div>
+      <div class="field">
+        <label>OFFICER NAME</label>
+        <input type="text" id="officerName" placeholder="Full name as per service record" />
+      </div>
+      <div class="badge-row">
+        <div class="field">
+          <label>BADGE NUMBER</label>
+          <input type="text" id="badgeNumber" placeholder="e.g. MH-04821" />
+        </div>
+        <div class="field">
+          <label>RANK</label>
+          <input type="text" id="rank" placeholder="SI / DSP / Inspector" />
+        </div>
+      </div>
+      <div class="field">
+        <label>POLICE STATION</label>
+        <input type="text" id="policeStation" placeholder="Station name & district" />
+      </div>
+      <button class="btn" id="loginBtn" onclick="handleLogin()">
+        <span class="btn-label">BEGIN SESSION</span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 2 — CASE DETAILS ═══════════════════ -->
+<div class="page" id="page2">
+  <div class="form-container">
+    <div class="logo-block">
+      <div class="logo-title" style="font-size:1.5rem; letter-spacing:4px;">CASE INITIALIZATION</div>
+      <div class="logo-sub">ENTER INCIDENT DETAILS BEFORE INTERVIEW</div>
+      <div class="logo-line"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">// CASE ENTRY — STEP 2 OF 4</div>
+      <div class="step-indicator">
+        <div class="step done"></div>
+        <div class="step current"></div>
+        <div class="step"></div>
+        <div class="step"></div>
+      </div>
+      <div class="field">
+        <label>CASE / FIR NUMBER</label>
+        <input type="text" id="caseID" placeholder="e.g. FIR/2025/MH/0042" />
+      </div>
+      <div class="field">
+        <label>VICTIM / WITNESS NAME</label>
+        <input type="text" id="victimName" placeholder="Full name (or Anonymous)" />
+      </div>
+      <div class="field">
+        <label>CRIME TYPE</label>
+        <select id="crimeType">
+          <option value="">— Select category —</option>
+          <option>Assault / Physical Violence</option>
+          <option>Robbery / Theft</option>
+          <option>Sexual Offence</option>
+          <option>Murder / Attempt to Murder</option>
+          <option>Kidnapping / Abduction</option>
+          <option>Burglary / House Breaking</option>
+          <option>Cybercrime</option>
+          <option>Vehicle Theft</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>INCIDENT DATE & TIME</label>
+        <input type="datetime-local" id="incidentTime" />
+      </div>
+      <button class="btn green" id="caseBtn" onclick="handleCaseSubmit()">
+        <span class="btn-label">START INTERVIEW →</span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 3 — RECORDING ═══════════════════ -->
+<div class="page" id="page3">
+  <div class="rec-layout">
+    <div style="text-align:center;">
+      <div class="logo-title" style="font-size:1rem; letter-spacing:4px; color:var(--text);">WITNESS STATEMENT CAPTURE</div>
+      <div class="logo-sub" style="margin-top:4px;">STEP 3 OF 4 — SPEAK IN YOUR NATIVE LANGUAGE</div>
+    </div>
+
+    <div class="mic-wrapper">
+      <div class="mic-ring"></div>
+      <div class="mic-ring"></div>
+      <div class="mic-ring"></div>
+      <button class="mic-btn" id="micBtn" onclick="toggleRecording()" title="Tap to record">🎙️</button>
+    </div>
+
+    <div class="rec-status" id="recStatus">TAP MIC TO BEGIN RECORDING</div>
+
+    <div class="waveform" id="waveform">
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+
+    <div class="transcript-block" style="max-width:680px;">
+      <div class="transcript-label">// REAL-TIME TRANSCRIPT</div>
+      <textarea id="transcript" placeholder="Transcript will appear here as you speak, or type the witness statement manually..."></textarea>
+    </div>
+
+    <div style="width:100%; max-width:680px;">
+      <button class="btn amber" id="analyzeBtn" onclick="handleAnalyze()">
+        <span class="btn-label">⚡ ANALYZE STATEMENT</span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 4 — RESULTS ═══════════════════ -->
+<div class="page" id="page4">
+  <div class="results-layout">
+
+    <div class="results-header">
+      <h2>// FORENSIC RECONSTRUCTION REPORT</h2>
+      <span class="case-tag" id="caseTagDisplay">CASE — —</span>
+    </div>
+
+    <!-- 3 RESULT CARDS -->
+    <div class="cards-row">
+
+      <!-- SUSPECT CARD — keys match api.js crimeData.suspect -->
+      <div class="result-card suspect">
+        <div class="card-header">
+          <span class="card-icon">👤</span>
+          <span class="card-title suspect">SUSPECT PROFILE</span>
+        </div>
+        <div class="card-row"><span class="card-key">Gender</span><span class="card-val" id="s-gender">—</span></div>
+        <div class="card-row"><span class="card-key">Age</span><span class="card-val" id="s-age">—</span></div>
+        <div class="card-row"><span class="card-key">Height</span><span class="card-val" id="s-height">—</span></div>
+        <div class="card-row"><span class="card-key">Build</span><span class="card-val" id="s-build">—</span></div>
+        <div class="card-row"><span class="card-key">Complexion</span><span class="card-val" id="s-skin_tone">—</span></div>
+        <div class="card-row"><span class="card-key">Hair</span><span class="card-val" id="s-hair">—</span></div>
+        <div class="card-row"><span class="card-key">Clothing</span><span class="card-val" id="s-clothing">—</span></div>
+        <div class="card-row"><span class="card-key">Marks</span><span class="card-val" id="s-distinctive_marks">—</span></div>
+      </div>
+
+      <!-- VEHICLE CARD — keys match api.js crimeData.vehicle -->
+      <div class="result-card vehicle">
+        <div class="card-header">
+          <span class="card-icon">🚗</span>
+          <span class="card-title vehicle">VEHICLE DETAILS</span>
+        </div>
+        <div class="card-row"><span class="card-key">Type</span><span class="card-val" id="v-type">—</span></div>
+        <div class="card-row"><span class="card-key">Color</span><span class="card-val" id="v-color">—</span></div>
+        <div class="card-row"><span class="card-key">Make</span><span class="card-val" id="v-make">—</span></div>
+        <div class="card-row"><span class="card-key">Plate</span><span class="card-val" id="v-number_plate">—</span></div>
+        <div class="card-row"><span class="card-key">Condition</span><span class="card-val" id="v-condition">—</span></div>
+      </div>
+
+      <!-- SCENE CARD — keys match api.js crimeData.scene -->
+      <div class="result-card scene">
+        <div class="card-header">
+          <span class="card-icon">📍</span>
+          <span class="card-title scene">CRIME SCENE</span>
+        </div>
+        <div class="card-row"><span class="card-key">Location</span><span class="card-val" id="sc-location">—</span></div>
+        <div class="card-row"><span class="card-key">Time</span><span class="card-val" id="sc-time_of_incident">—</span></div>
+        <div class="card-row"><span class="card-key">Environment</span><span class="card-val" id="sc-environment">—</span></div>
+        <div class="card-row"><span class="card-key">Landmarks</span><span class="card-val" id="sc-landmarks">—</span></div>
+        <div class="card-row"><span class="card-key">Weather</span><span class="card-val" id="sc-weather">—</span></div>
+      </div>
+
+    </div>
+
+    <!-- SKETCH + FIR ROW -->
+    <div class="bottom-grid">
+
+      <div class="sketch-box">
+        <div class="sketch-label">// SUSPECT SKETCH</div>
+        <div class="sketch-placeholder" id="sketchPlaceholder">AI SKETCH<br/>PENDING</div>
+        <img id="sketchImage" src="" alt="Suspect Sketch" />
+        <button class="btn amber" id="sketchBtn" style="margin-top:10px; padding:9px 16px; font-size:0.6rem;" onclick="handleSketch()">
+          <span class="btn-label">GENERATE SKETCH</span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+
+      <div class="fir-box">
+        <div class="fir-label">// FIR DOCUMENT — AUTO GENERATED</div>
+        <textarea id="firText" placeholder="Click GENERATE FIR below to draft the official FIR document..."></textarea>
+      </div>
+
+    </div>
+
+    <!-- ACTION BUTTONS -->
+    <!-- CHANGE 5: Added VERIFY INTEGRITY button in action row -->
+    <div class="action-row">
+      <button class="btn green" id="firBtn" onclick="handleGenerateFIR()">
+        <span class="btn-label">📄 GENERATE FIR</span>
+        <div class="spinner"></div>
+      </button>
+      <button class="btn" id="verifyBtn" onclick="handleVerify()">
+        <span class="btn-label">🔐 VERIFY INTEGRITY</span>
+        <div class="spinner"></div>
+      </button>
+      <button class="btn" id="pdfBtn" onclick="handleDownloadPDF()">
+        <span class="btn-label">⬇ DOWNLOAD PDF</span>
+        <div class="spinner"></div>
+      </button>
+      <button class="btn red" onclick="handleEndSession()">
+        <span class="btn-label">✕ END SESSION</span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  /* ─── STATE ─── */
+  let officerInfo       = {};
+  let caseInfo          = {};
+  let crimeData         = null;
+  let generatedFirText  = '';
+  let sketchURL         = '';
+  let isRecording       = false;
+  let recognition       = null;
+
+  /* ─── CHANGE 2: CONTRACT CONSTANTS ─── */
+  const CONTRACT_ADDRESS = "0x73c8AE079520E552Ae3c8701FD1acc31E70F4632";
+  const ABI = [
+    "function storeFIR(string caseId, string hash) public",
+    "function verifyFIR(string caseId, string hash) public view returns (bool)"
+  ];
+
+  /* ─── CLOCK ─── */
+  (function clock() {
+    const el = document.getElementById('clock');
+    setInterval(() => {
+      el.textContent = new Date().toTimeString().slice(0, 8);
+    }, 1000);
+  })();
+
+  /* ─── PAGE NAVIGATION ─── */
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.getElementById('backBtn').classList.toggle('hidden', id === 'page1');
+    window.scrollTo(0, 0);
+  }
+
+  function goBack() {
+    const pages = ['page1','page2','page3','page4'];
+    const active = document.querySelector('.page.active');
+    const idx = pages.indexOf(active.id);
+    if (idx > 0) showPage(pages[idx - 1]);
+  }
+
+  /* ─── GLOBAL LOADING OVERLAY ─── */
+  function showLoading(msg) {
+    document.getElementById('loadingMsg').textContent = msg || 'PROCESSING...';
+    document.getElementById('loadingOverlay').classList.add('active');
+  }
+
+  function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('active');
+  }
+
+  /* ─── TOAST ─── */
+  function showToast(msg, isError = false, duration = 3000) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), duration);
+  }
+
+  /* ─── BUTTON LOADING ─── */
+  function setLoading(btnId, state) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.classList.toggle('loading', state);
+    btn.disabled = state;
+  }
+
+  /* ─── LOGIN HANDLER ─── */
+  function handleLogin() {
+    const name    = document.getElementById('officerName').value.trim();
+    const badge   = document.getElementById('badgeNumber').value.trim();
+    const rankVal = document.getElementById('rank').value.trim();
+    const station = document.getElementById('policeStation').value.trim();
+    if (!name || !badge || !station) {
+      showToast('⚠ Please fill all officer details', true); return;
+    }
+    officerInfo = { name, badge, rank: rankVal, station };
+    showPage('page2');
+    showToast('✓ Officer authenticated: ' + name);
+  }
+
+  /* ─── CASE SUBMIT HANDLER ─── */
+  function handleCaseSubmit() {
+    const caseID    = document.getElementById('caseID').value.trim();
+    const victim    = document.getElementById('victimName').value.trim();
+    const crimeType = document.getElementById('crimeType').value;
+    if (!caseID || !victim || !crimeType) {
+      showToast('⚠ Please fill all case details', true); return;
+    }
+    caseInfo = {
+      caseId: caseID,
+      victimName: victim,
+      crimeType,
+      incidentDate: document.getElementById('incidentTime').value
+    };
+    document.getElementById('caseTagDisplay').textContent = 'CASE — ' + caseID;
+    showPage('page3');
+    showToast('✓ Case initialized: ' + caseID);
+  }
+
+  /* ─── MIC RECORDING ─── */
+  function toggleRecording() {
+    isRecording = !isRecording;
+    const btn    = document.getElementById('micBtn');
+    const status = document.getElementById('recStatus');
+    const bars   = document.querySelectorAll('.wave-bar');
+
+    btn.classList.toggle('recording', isRecording);
+    status.classList.toggle('active', isRecording);
+
+    if (isRecording) {
+      btn.textContent = '⏹️';
+      status.textContent = '● RECORDING — SPEAK NOW';
+      bars.forEach(b => b.classList.add('animating'));
+      startBrowserRecording();
+    } else {
+      btn.textContent = '🎙️';
+      status.textContent = 'RECORDING STOPPED — REVIEW TRANSCRIPT';
+      bars.forEach(b => { b.classList.remove('animating'); b.style.height = '8px'; });
+      stopBrowserRecording();
+    }
+  }
+
+  function startBrowserRecording() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { showToast('⚠ Speech recognition not supported. Use Chrome.', true); return; }
+    recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    let finalTranscript = '';
+    recognition.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + ' ';
+        else interim += e.results[i][0].transcript;
+      }
+      document.getElementById('transcript').value = finalTranscript + interim;
+    };
+    recognition.onerror = (e) => showToast('⚠ Mic error: ' + e.error, true);
+    recognition.onend = () => { if (isRecording) recognition.start(); };
+    recognition.start();
+  }
+
+  function stopBrowserRecording() {
+    if (recognition) {
+      recognition.onend = null;
+      recognition.stop();
+      recognition = null;
+    }
+  }
+
+  /* ─── ANALYZE HANDLER ─── */
+  async function handleAnalyze() {
+    const witnessStatement = document.getElementById('transcript').value.trim();
+    if (!witnessStatement) {
+      showToast('⚠ Please add a witness statement first', true); return;
+    }
+    if (isRecording) toggleRecording();
+
+    showLoading('ANALYZING WITNESS TESTIMONY...');
+    try {
+      if (typeof analyzeStatement === 'function') {
+        crimeData = await analyzeStatement(witnessStatement);
+      } else {
+        await fakeDelay(1200);
+        crimeData = getDummyData();
+      }
+      populateCards(crimeData);
+      showPage('page4');
+      showToast('✓ Analysis complete.');
+    } catch (err) {
+      showToast('⚠ Analysis error: ' + err.message, true);
+    } finally {
+      hideLoading();
+    }
+  }
+
+  /* ─── CHANGE 3: BLOCKCHAIN HELPER FUNCTIONS ─── */
+  async function hashFIR(text) {
+    const msgBuffer = new TextEncoder().encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function stampOnBlockchain(caseId, firText) {
+    const hash = await hashFIR(firText);
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+    const tx = await contract.storeFIR(caseId, hash);
+    await tx.wait();
+    return hash;
+  }
+
+  async function verifyOnBlockchain(caseId, firText) {
+    const hash = await hashFIR(firText);
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+    return await contract.verifyFIR(caseId, hash);
+  }
+
+  /* ─── GENERATE FIR ─── */
+  async function handleGenerateFIR() {
+    if (!crimeData) { showToast('⚠ Run analysis first', true); return; }
+    showLoading('DRAFTING FIR DOCUMENT...');
+    setLoading('firBtn', true);
+    const witnessStatement = document.getElementById('transcript').value;
+    try {
+      if (typeof generateFIR === 'function') {
+        generatedFirText = await generateFIR(crimeData, officerInfo, witnessStatement);
+      } else {
+        await fakeDelay(1000);
+        generatedFirText = buildFallbackFIR();
+      }
+      document.getElementById('firText').value = generatedFirText;
+      showToast('✓ FIR document generated.');
+
+      /* ─── CHANGE 4: STAMP FIR ON BLOCKCHAIN AFTER GENERATION ─── */
+      try {
+        showToast('🔐 Stamping FIR on blockchain...');
+        const hash = await stampOnBlockchain(caseInfo.caseId, generatedFirText);
+        showToast('✓ FIR stamped on Sepolia Blockchain — Hash: ' + hash.slice(0, 20) + '...', false, 5000);
+      } catch (bcErr) {
+        showToast('⚠ Blockchain stamp failed: ' + bcErr.message, true);
+      }
+
+    } catch (err) {
+      showToast('⚠ FIR error: ' + err.message, true);
+    } finally {
+      hideLoading();
+      setLoading('firBtn', false);
+    }
+  }
+
+  /* ─── CHANGE 6: VERIFY INTEGRITY HANDLER ─── */
+  async function handleVerify() {
+    const currentFir = document.getElementById('firText').value;
+    if (!currentFir) { showToast('⚠ No FIR to verify', true); return; }
+    showLoading('VERIFYING ON BLOCKCHAIN...');
+    setLoading('verifyBtn', true);
+    try {
+      const isValid = await verifyOnBlockchain(caseInfo.caseId, currentFir);
+      if (isValid) showToast('✓ FIR UNTAMPERED — Blockchain verified');
+      else showToast('✗ FIR TAMPERED — Hash mismatch detected', true);
+    } catch (err) {
+      showToast('⚠ Verify error: ' + err.message, true);
+    } finally {
+      hideLoading();
+      setLoading('verifyBtn', false);
+    }
+  }
+
+  /* ─── GENERATE SKETCH ─── */
+  async function handleSketch() {
+    if (!crimeData) { showToast('⚠ Run analysis first', true); return; }
+    showLoading('GENERATING SUSPECT SKETCH...');
+    setLoading('sketchBtn', true);
+    try {
+      if (typeof generateSketch === 'function') {
+        sketchURL = await generateSketch(crimeData.suspect);
+        const img = document.getElementById('sketchImage');
+        img.src = sketchURL;
+        img.style.display = 'block';
+        document.getElementById('sketchPlaceholder').style.display = 'none';
+        showToast('✓ Suspect sketch generated.');
+      } else {
+        await fakeDelay(900);
+        showToast('ℹ Sketch requires api.js connection.');
+      }
+    } catch (err) {
+      showToast('⚠ Sketch error: ' + err.message, true);
+    } finally {
+      hideLoading();
+      setLoading('sketchBtn', false);
+    }
+  }
+
+  /* ─── DOWNLOAD PDF ─── */
+  async function handleDownloadPDF() {
+    showLoading('GENERATING PDF REPORT...');
+    setLoading('pdfBtn', true);
+    // Always read latest FIR text from textarea (user may have edited it)
+    const currentFirText = document.getElementById('firText').value || generatedFirText;
+    try {
+      if (typeof downloadPDF === 'function') {
+        // Pass correct parameter structure matching api.js
+        await downloadPDF(crimeData, currentFirText, sketchURL, caseInfo, officerInfo);
+      } else {
+        await fakeDelay(600);
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(14);
+        doc.text('SMRITI AI — FORENSIC RECONSTRUCTION REPORT', 15, 20);
+        doc.setFontSize(10);
+        const lines = doc.splitTextToSize(currentFirText || 'No FIR generated yet.', 180);
+        doc.text(lines, 15, 35);
+        doc.save('SmritiAI_FIR_' + (caseInfo.caseId || 'Report') + '.pdf');
+      }
+      showToast('✓ PDF downloaded successfully.');
+    } catch (err) {
+      showToast('⚠ PDF error: ' + err.message, true);
+    } finally {
+      hideLoading();
+      setLoading('pdfBtn', false);
+    }
+  }
+
+  /* ─── END SESSION ─── */
+  function handleEndSession() {
+    officerInfo      = {};
+    caseInfo         = {};
+    crimeData        = null;
+    generatedFirText = '';
+    sketchURL        = '';
+    isRecording      = false;
+    if (recognition) { try { recognition.onend = null; recognition.stop(); } catch(e){} recognition = null; }
+
+    // Reset all inputs
+    ['officerName','badgeNumber','rank','policeStation','caseID','victimName','incidentTime','transcript','firText'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('crimeType').value = '';
+
+    // Reset result cards
+    ['s-gender','s-age','s-height','s-build','s-skin_tone','s-hair','s-clothing','s-distinctive_marks',
+     'v-type','v-color','v-make','v-number_plate','v-condition',
+     'sc-location','sc-time_of_incident','sc-environment','sc-landmarks','sc-weather']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+
+    // Reset sketch
+    const img = document.getElementById('sketchImage');
+    img.src = ''; img.style.display = 'none';
+    document.getElementById('sketchPlaceholder').style.display = 'flex';
+
+    showPage('page1');
+    showToast('Session ended. All data cleared.');
+  }
+
+  /* ─── POPULATE RESULT CARDS ─── */
+  // ID format: prefix-fieldname  e.g. "s-skin_tone" maps to crimeData.suspect.skin_tone
+  function populateCards(data) {
+    if (!data) return;
+
+    const suspectMap = {
+      's-gender':           data.suspect?.gender,
+      's-age':              data.suspect?.age,
+      's-height':           data.suspect?.height,
+      's-build':            data.suspect?.build,
+      's-skin_tone':        data.suspect?.skin_tone,
+      's-hair':             data.suspect?.hair,
+      's-clothing':         data.suspect?.clothing,
+      's-distinctive_marks':data.suspect?.distinctive_marks
+    };
+
+    const vehicleMap = {
+      'v-type':         data.vehicle?.type,
+      'v-color':        data.vehicle?.color,
+      'v-make':         data.vehicle?.make,
+      'v-number_plate': data.vehicle?.number_plate,
+      'v-condition':    data.vehicle?.condition
+    };
+
+    const sceneMap = {
+      'sc-location':         data.scene?.location,
+      'sc-time_of_incident': data.scene?.time_of_incident,
+      'sc-environment':      data.scene?.environment,
+      'sc-landmarks':        data.scene?.landmarks,
+      'sc-weather':          data.scene?.weather
+    };
+
+    const allMaps = { ...suspectMap, ...vehicleMap, ...sceneMap };
+    Object.entries(allMaps).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = (val && val.trim() !== '') ? val : '—';
+    });
+  }
+
+  /* ─── FALLBACK FIR (no api.js) ─── */
+  function buildFallbackFIR() {
+    const s = crimeData?.suspect || {};
+    const v = crimeData?.vehicle || {};
+    const sc = crimeData?.scene || {};
+    return `FIRST INFORMATION REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Case No   : ${caseInfo.caseId || 'N/A'}
+Date      : ${new Date().toLocaleDateString('en-IN')}
+Station   : ${officerInfo.station || 'N/A'}
+Officer   : ${officerInfo.name || 'N/A'} (Badge: ${officerInfo.badge || 'N/A'})
+Crime     : ${caseInfo.crimeType || 'N/A'}
+Victim    : ${caseInfo.victimName || 'N/A'}
+
+INCIDENT SUMMARY:
+${crimeData?.incident_summary || 'No summary available.'}
+
+SUSPECT DESCRIPTION:
+Gender: ${s.gender || '—'} | Age: ${s.age || '—'} | Height: ${s.height || '—'}
+Build: ${s.build || '—'} | Complexion: ${s.skin_tone || '—'}
+Hair: ${s.hair || '—'} | Clothing: ${s.clothing || '—'}
+Distinctive Marks: ${s.distinctive_marks || '—'}
+
+VEHICLE DETAILS:
+Type: ${v.type || '—'} | Color: ${v.color || '—'} | Make: ${v.make || '—'}
+Number Plate: ${v.number_plate || '—'} | Condition: ${v.condition || '—'}
+
+CRIME SCENE:
+Location: ${sc.location || '—'} | Time: ${sc.time_of_incident || '—'}
+Environment: ${sc.environment || '—'} | Weather: ${sc.weather || '—'}
+Landmarks: ${sc.landmarks || '—'}
+
+STATUS: Investigation underway.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Generated by Smriti AI — Forensic Witness Interview System]
+[Eclipse 6.0 | Team: 404 Found]`;
+  }
+
+  /* ─── DUMMY DATA (when api.js not present) ─── */
+  function getDummyData() {
+    return {
+      suspect: {
+        gender: 'Male', age: '28–35', height: '5\'9"', build: 'Medium',
+        skin_tone: 'Wheatish', hair: 'Short black', eyes: 'Dark brown',
+        clothing: 'Dark blue shirt, jeans', distinctive_marks: 'Scar on right cheek'
+      },
+      vehicle: {
+        type: 'Sedan', color: 'Dark blue', make: 'Maruti',
+        number_plate: 'MH-04-AB-??21', condition: 'Minor dent, left door'
+      },
+      scene: {
+        location: 'Near Lajpat Nagar Metro', time_of_incident: 'Approx. 9:45 PM',
+        environment: 'Urban street', landmarks: 'ATM, auto stand',
+        weather: 'Clear, 22°C'
+      },
+      incident_summary: 'Robbery near Lajpat Nagar Metro at 9:45 PM by a male suspect who fled in a dark blue sedan.'
+    };
+  }
+
+  function fakeDelay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  /* ─── INIT ─── */
+  showPage('page1');
+</script>
+</body>
+</html>
